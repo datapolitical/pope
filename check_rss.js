@@ -66,12 +66,15 @@ async function sendPushNotification(title, link, isTest = false) {
     token,
     user,
     title: isTest ? '*** TEST POPE ALERT ***' : '*** NEW POPE ELECTED ***',
-    message: `${title}\n${link}`
+    message: `${title}\n${link}`,
+    priority: 2,
+    retry: 60,
+    expire: 3600
   };
 
   try {
     await axios.post('https://api.pushover.net/1/messages.json', payload);
-    console.log('Pushover notification sent.');
+    console.log('Emergency Pushover notification sent.');
   } catch (error) {
     console.error('Error sending Pushover notification:', error.response?.data || error.message);
   }
