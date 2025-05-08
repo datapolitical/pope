@@ -1,5 +1,6 @@
-const Parser = require('rss-parser');
-const axios = require('axios');
+import Parser from 'rss-parser';
+import axios from 'axios';
+
 const parser = new Parser();
 
 const ANNOUNCEMENT_PHRASES = [
