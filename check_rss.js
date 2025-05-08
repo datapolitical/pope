@@ -85,9 +85,11 @@ function classifyArticle(title, content) {
     return 'irrelevant';
   }
 
-  // 2) Exact announcement
+  // 2) Exact announcements
   for (const phrase of ANNOUNCEMENT_PHRASES) {
-    if (text.includes(phrase)) return 'announcement';
+    if (text.includes(phrase)) {
+      return 'announcement';
+    }
   }
 
   // 3) White smoke + context => announcement
@@ -99,17 +101,17 @@ function classifyArticle(title, content) {
 
   // 4) Fallback scoring
   let score = 0;
-  for (const p of ANNOUNCEMENT_PHRASES)  score += text.includes(p) ? 3 : 0;
-  for (const p of GENERIC_PHRASES)       score += text.includes(p) ? 1 : 0;
-  for (const p of IRRELEVANT_PHRASES)    score -= text.includes(p) ? 3 : 0;
+  for (const p of ANNOUNCEMENT_PHRASES) score += text.includes(p) ? 3 : 0;
+  for (const p of GENERIC_PHRASES)      score += text.includes(p) ? 1 : 0;
+  for (const p of IRRELEVANT_PHRASES)   score -= text.includes(p) ? 3 : 0;
 
-  if (score >= 5) return 'announcement';
-  if (score >= 1) return 'generic';
+  if (score >= 5)   return 'announcement';
+  if (score >= 1)   return 'generic';
   return 'irrelevant';
 }
 
 async function sendPushNotification(title, link, isTest = false) {
-  const user = process.env.PUSHOVER_USER_KEY;
+  const user  = process.env.PUSHOVER_USER_KEY;
   const token = process.env.PUSHOVER_APP_TOKEN;
   if (!user || !token) {
     console.error('Pushover credentials not set.');
@@ -119,11 +121,11 @@ async function sendPushNotification(title, link, isTest = false) {
   const payload = {
     token,
     user,
-    title: isTest ? '*** TEST POPE ALERT ***' : '*** NEW POPE ELECTED ***',
+    title:   isTest ? '*** TEST POPE ALERT ***' : '*** NEW POPE ELECTED ***',
     message: `${title}\n${link}`,
     priority: 2,
-    retry: 60,
-    expire: 3600
+    retry:    60,
+    expire:   3600
   };
 
   try {
@@ -165,15 +167,26 @@ async function main() {
         pubDate:     new Date().toISOString()
       };
     } else {
-      // 1) Fetch & dump raw XML
-      const { data: xml } = await axios.get(RSS_URL);
+      // 1) Fetch the RSS feed
+      const response = await axios.get(RSS_URL);
+      if (response.status !== 200) {
+        core.setFailed(`Failed to fetch RSS feed: HTTP ${response.status}`);
+        return;
+      }
+      const xml = response.data;
       fs.writeFileSync('rss_dump.xml', xml);
 
-      // 2) Parse XML
+      // 2) Quick sanity check
+      if (!xml.includes('<rss') && !xml.includes('<channel')) {
+        core.setFailed('Fetched content does not look like RSS XML.');
+        return;
+      }
+
+      // 3) Parse XML
       const parser = new xml2js.Parser({ strict: false, trim: true });
       const result = await parser.parseStringPromise(xml);
 
-      // 3) Robustly locate <channel>
+      // 4) Robustly locate <channel>
       const rootKey = Object.keys(result)[0];
       const rssRoot = result[rootKey];
       const channelArr = rssRoot.channel || rssRoot['rss:channel'];
@@ -183,7 +196,7 @@ async function main() {
       }
       const channel = channelArr[0];
 
-      // 4) Extract items
+      // 5) Pull the first <item>
       const items = channel.item || [];
       if (items.length === 0) {
         core.setFailed('No items found in RSS feed.');
@@ -206,7 +219,7 @@ async function main() {
       return;
     }
 
-    // Deduplication
+    // Deduplicate
     const lastSeen = getLastSeenGuid();
     if (!TEST_MODE && guid === lastSeen) {
       console.log(`↩️ Skipping duplicate: ${title}`);
