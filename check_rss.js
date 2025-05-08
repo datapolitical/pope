@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// check_rss.js
+
 import axios from 'axios';
 import fs from 'fs';
 import * as core from '@actions/core';
@@ -14,57 +16,116 @@ const TEST_MODE   = process.env.TEST_MODE === 'true';
 //
 // ---------- Classification rules ----------
 //
-const EXPLANATORY_PATTERNS = [ /\bhistory\b/i, /\bbehind\b/i, /\bexplained?\b/i, /\bguide\b/i, /\bwhat is\b/i ];
+const EXPLANATORY_PATTERNS = [
+  /\bhistory\b/i,
+  /\bbehind\b/i,
+  /\bexplained?\b/i,
+  /\bguide\b/i,
+  /\bwhat is\b/i
+];
+
 const ANNOUNCEMENT_PHRASES = [
-  'habemus papam','new pope elected','cardinal elected pope',
-  'pope francis elected','we have a pope','vatican announces new pope',
-  'pope has been elected','new pontiff','bishop of rome elected',
-  'cardinals elect new pope','new bishop of rome','new pope chosen',
-  'pontiff chosen','pope selected'
+  'habemus papam',
+  'new pope elected',
+  'cardinal elected pope',
+  'pope francis elected',
+  'we have a pope',
+  'vatican announces new pope',
+  'pope has been elected',
+  'new pontiff',
+  'bishop of rome elected',
+  'cardinals elect new pope',
+  'new bishop of rome',
+  'new pope chosen',
+  'pontiff chosen',
+  'pope selected'
 ];
-const ELECTION_CONTEXT_TERMS = [ 'pope','conclave','elect','elected','papal','new pope','pontiff' ];
+
+const ELECTION_CONTEXT_TERMS = [
+  'pope',
+  'conclave',
+  'elect',
+  'elected',
+  'papal',
+  'new pope',
+  'pontiff'
+];
+
 const GENERIC_PHRASES = [
-  'white smoke','papal conclave','conclave','sistine chapel','vatican city',
-  'cardinals vote','voting underway','smoke rises','papal election',
-  'vatican crowd','pope watchers'
+  'white smoke',
+  'papal conclave',
+  'conclave',
+  'sistine chapel',
+  'vatican city',
+  'cardinals vote',
+  'voting underway',
+  'smoke rises',
+  'papal election',
+  'vatican crowd',
+  'pope watchers'
 ];
-const IRRELEVANT_PHRASES = [ 'wildfire','rumor','fake','hoax' ];
+
+const IRRELEVANT_PHRASES = [
+  'wildfire',
+  'rumor',
+  'fake',
+  'hoax'
+];
 
 function classifyArticle(title, content) {
   const text = (title + ' ' + content).toLowerCase();
 
   // 0) Explanatory override
-  if (EXPLANATORY_PATTERNS.some(rx => rx.test(text))) return 'generic';
+  if (EXPLANATORY_PATTERNS.some(rx => rx.test(text))) {
+    return 'generic';
+  }
+
   // 1) Black smoke override
-  if (/\bblack smoke\b/.test(text))       return 'irrelevant';
-  // 2) Exact announcements
-  for (const p of ANNOUNCEMENT_PHRASES)  if (text.includes(p)) return 'announcement';
+  if (/\bblack smoke\b/.test(text)) {
+    return 'irrelevant';
+  }
+
+  // 2) Exact announcement
+  for (const phrase of ANNOUNCEMENT_PHRASES) {
+    if (text.includes(phrase)) return 'announcement';
+  }
+
   // 3) White smoke + context => announcement
   if (/\bwhite smoke\b/.test(text) &&
       ELECTION_CONTEXT_TERMS.some(t => text.includes(t))
-  ) return 'announcement';
+  ) {
+    return 'announcement';
+  }
+
   // 4) Fallback scoring
   let score = 0;
-  for (const p of ANNOUNCEMENT_PHRASES) score += text.includes(p) ? 3 : 0;
-  for (const p of GENERIC_PHRASES)      score += text.includes(p) ? 1 : 0;
-  for (const p of IRRELEVANT_PHRASES)   score -= text.includes(p) ? 3 : 0;
+  for (const p of ANNOUNCEMENT_PHRASES)  score += text.includes(p) ? 3 : 0;
+  for (const p of GENERIC_PHRASES)       score += text.includes(p) ? 1 : 0;
+  for (const p of IRRELEVANT_PHRASES)    score -= text.includes(p) ? 3 : 0;
+
   if (score >= 5) return 'announcement';
   if (score >= 1) return 'generic';
   return 'irrelevant';
 }
 
-async function sendPushNotification(title, link, isTest=false) {
-  const user  = process.env.PUSHOVER_USER_KEY;
+async function sendPushNotification(title, link, isTest = false) {
+  const user = process.env.PUSHOVER_USER_KEY;
   const token = process.env.PUSHOVER_APP_TOKEN;
   if (!user || !token) {
     console.error('Pushover credentials not set.');
     return;
   }
-  const payload = { token, user,
-    title:   isTest ? '*** TEST POPE ALERT ***' : '*** NEW POPE ELECTED ***',
+
+  const payload = {
+    token,
+    user,
+    title: isTest ? '*** TEST POPE ALERT ***' : '*** NEW POPE ELECTED ***',
     message: `${title}\n${link}`,
-    priority:2, retry:60, expire:3600
+    priority: 2,
+    retry: 60,
+    expire: 3600
   };
+
   try {
     await axios.post('https://api.pushover.net/1/messages.json', payload);
     console.log('► Pushover notification sent.');
@@ -75,25 +136,33 @@ async function sendPushNotification(title, link, isTest=false) {
 }
 
 function getLastSeenGuid() {
-  try { return fs.readFileSync(MEMORY_FILE,'utf8').trim(); }
-  catch { return null; }
+  try {
+    return fs.readFileSync(MEMORY_FILE, 'utf8').trim();
+  } catch {
+    return null;
+  }
 }
+
 function setLastSeenGuid(guid) {
-  try { fs.writeFileSync(MEMORY_FILE, guid.trim(), 'utf8'); }
-  catch (err) { console.error('Failed to write memory file:', err.message); }
+  try {
+    fs.writeFileSync(MEMORY_FILE, guid.trim(), 'utf8');
+  } catch (err) {
+    console.error('Failed to write memory file:', err.message);
+  }
 }
 
 async function main() {
   try {
     let article;
+
     if (TEST_MODE) {
       console.log('⚙️ Running in TEST_MODE');
       article = {
-        guid: 'test-guid',
-        title: 'Habemus Papam: Cardinal Doe elected Pope Innocent XIV',
+        guid:        'test-guid',
+        title:       'Habemus Papam: Cardinal Doe elected Pope Innocent XIV',
         description: 'Cardinals have elected a new pope during the fifth ballot.',
-        link: 'https://example.com/fake-pope-news',
-        pubDate: new Date().toISOString()
+        link:        'https://example.com/fake-pope-news',
+        pubDate:     new Date().toISOString()
       };
     } else {
       // 1) Fetch & dump raw XML
@@ -101,17 +170,20 @@ async function main() {
       fs.writeFileSync('rss_dump.xml', xml);
 
       // 2) Parse XML
-      const parser = new xml2js.Parser({ strict:false, trim:true });
+      const parser = new xml2js.Parser({ strict: false, trim: true });
       const result = await parser.parseStringPromise(xml);
 
-      // 3) Normalize: xml2js wraps rss in an array
-      const rssRoot = Array.isArray(result.rss) ? result.rss[0] : result.rss;
-      const channel = rssRoot.channel?.[0];
-      if (!channel) {
+      // 3) Robustly locate <channel>
+      const rootKey = Object.keys(result)[0];
+      const rssRoot = result[rootKey];
+      const channelArr = rssRoot.channel || rssRoot['rss:channel'];
+      if (!Array.isArray(channelArr) || !channelArr[0]) {
         core.setFailed('Malformed RSS: <channel> not found.');
         return;
       }
+      const channel = channelArr[0];
 
+      // 4) Extract items
       const items = channel.item || [];
       if (items.length === 0) {
         core.setFailed('No items found in RSS feed.');
@@ -122,14 +194,17 @@ async function main() {
       article = {
         guid:        first.guid?.[0]?._ || first.guid?.[0] || first.link?.[0] || '',
         title:       first.title?.[0]    || '',
-        description: first.description?.[0]|| '',
+        description: first.description?.[0] || '',
         link:        first.link?.[0]     || '',
         pubDate:     first.pubDate?.[0]  || ''
       };
     }
 
     const { guid, title, description, link } = article;
-    if (!guid) { core.setFailed('No GUID on latest article.'); return; }
+    if (!guid) {
+      core.setFailed('No GUID on latest article.');
+      return;
+    }
 
     // Deduplication
     const lastSeen = getLastSeenGuid();
@@ -138,7 +213,7 @@ async function main() {
       return;
     }
 
-    // Classify & possibly notify
+    // Classify & notify
     const cls = classifyArticle(title, description);
     if (cls === 'announcement') {
       console.log(`🎉 NEW POPE ELECTED 🎉\n${title}\n${link}`);
@@ -147,8 +222,10 @@ async function main() {
       console.log(`[${cls.toUpperCase()}] ${title}`);
     }
 
-    // Persist state
-    if (!TEST_MODE) setLastSeenGuid(guid);
+    // Persist GUID
+    if (!TEST_MODE) {
+      setLastSeenGuid(guid);
+    }
 
   } catch (err) {
     core.setFailed(`Script error: ${err.message}`);
