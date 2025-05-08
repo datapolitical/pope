@@ -1,36 +1,68 @@
-const axios = require("axios");
-const xml2js = require("xml2js");
+const Parser = require('rss-parser');
+const parser = new Parser();
+
+const ANNOUNCEMENT_PHRASES = [
+  'habemus papam',
+  'new pope elected',
+  'cardinal elected pope',
+  'pope francis elected',
+  'we have a pope',
+  'vatican announces new pope',
+  'pope francis successor',
+  'pope has been elected',
+  'new pontiff',
+  'bishop of rome elected',
+  'cardinals elect new pope',
+  'cardinal [name] elected pope' // catch-all
+];
+
+const GENERIC_PHRASES = [
+  'white smoke',
+  'papal conclave',
+  'sistine chapel',
+  'voting underway',
+  'vatican city'
+];
+
+const IRRELEVANT_PHRASES = [
+  'wildfire',
+  'symbolic',
+  'engine',
+  'metaphor',
+  'fiction',
+  'celebrity',
+  'rumor'
+];
+
+function classifyArticle(title, content) {
+  const text = (title + ' ' + content).toLowerCase();
+
+  const isAnnouncement = ANNOUNCEMENT_PHRASES.some(phrase => text.includes(phrase));
+  const isWhiteSmoke = text.includes('white smoke');
+  const hasElectionContext = text.includes('new pope') || text.includes('cardinals elect');
+
+  if (isAnnouncement) return 'announcement';
+  if (isWhiteSmoke && hasElectionContext) return 'announcement';
+
+  const isGeneric = GENERIC_PHRASES.some(phrase => text.includes(phrase));
+  const isIrrelevant = IRRELEVANT_PHRASES.some(phrase => text.includes(phrase));
+
+  if (isGeneric && !isIrrelevant) return 'generic';
+  return 'irrelevant';
+}
 
 (async () => {
-  const feedURL = "https://www.catholicnewsagency.com/rss/news-vatican.xml";
+  const feed = await parser.parseURL('https://www.catholicnewsagency.com/rss');
+  const article = feed.items[0];
+  const title = article.title || '';
+  const content = article.contentSnippet || article.content || '';
 
-  try {
-    const { data } = await axios.get(feedURL);
-    const parsed = await xml2js.parseStringPromise(data);
-    const items = parsed.rss.channel[0].item || [];
+  const classification = classifyArticle(title, content);
 
-    for (const item of items) {
-      const title = item.title[0];
-      if (/white smoke/i.test(title)) {
-        console.log("White smoke detected:", title);
-
-        await axios.post("https://api.pushover.net/1/messages.json", null, {
-          params: {
-            token: process.env.PUSHOVER_APP_TOKEN,
-            user: process.env.PUSHOVER_USER_KEY,
-            message: `White smoke — ${title}`,
-            priority: 2,
-            retry: 60,
-            expire: 3600,
-            sound: "alien"
-          }
-        });
-
-        break;
-      }
-    }
-  } catch (err) {
-    console.error("Error:", err.message);
-    process.exit(1);
+  if (classification === 'announcement') {
+    console.log(`*** NEW POPE ELECTED ***\n${title}\n${article.link}`);
+    // insert your notification logic here (e.g. webhook, Pushover, email, etc.)
+  } else {
+    console.log(`[${classification.toUpperCase()}] ${title}`);
   }
 })();
