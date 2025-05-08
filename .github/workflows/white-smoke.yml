@@ -3,11 +3,12 @@ name: Check for White Smoke
 on:
   schedule:
     - cron: '*/15 * * * *'  # every 15 minutes
-  workflow_dispatch:        # manual trigger
+  workflow_dispatch:       # manual trigger for testing
 
 jobs:
   white-smoke-check:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -17,11 +18,17 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install deps
-        run: npm install xml2js axios
+      - name: Install dependencies
+        run: npm install rss-parser axios
 
       - name: Run smoke check
-        run: node check_rss.js
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Running in TEST_MODE"
+            TEST_MODE=true node check_rss.js
+          else
+            node check_rss.js
+          fi
         env:
           PUSHOVER_USER_KEY: ${{ secrets.PUSHOVER_USER_KEY }}
           PUSHOVER_APP_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
