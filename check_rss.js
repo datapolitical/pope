@@ -13,25 +13,27 @@ const ANNOUNCEMENT_PHRASES = [
   'new pontiff',
   'bishop of rome elected',
   'cardinals elect new pope',
-  'cardinal [name] elected pope' // catch-all
+  'pope [name] elected', // fuzzy placeholder
 ];
 
 const GENERIC_PHRASES = [
   'white smoke',
   'papal conclave',
   'sistine chapel',
+  'vatican city',
+  'cardinals vote',
   'voting underway',
-  'vatican city'
 ];
 
 const IRRELEVANT_PHRASES = [
   'wildfire',
   'symbolic',
   'engine',
-  'metaphor',
   'fiction',
+  'metaphor',
   'celebrity',
-  'rumor'
+  'rumor',
+  'speculation',
 ];
 
 function classifyArticle(title, content) {
@@ -39,10 +41,11 @@ function classifyArticle(title, content) {
 
   const isAnnouncement = ANNOUNCEMENT_PHRASES.some(phrase => text.includes(phrase));
   const isWhiteSmoke = text.includes('white smoke');
-  const hasElectionContext = text.includes('new pope') || text.includes('cardinals elect');
+  const isElectionContext = text.includes('new pope') || text.includes('cardinals elect');
 
-  if (isAnnouncement) return 'announcement';
-  if (isWhiteSmoke && hasElectionContext) return 'announcement';
+  if (isAnnouncement || (isWhiteSmoke && isElectionContext)) {
+    return 'announcement';
+  }
 
   const isGeneric = GENERIC_PHRASES.some(phrase => text.includes(phrase));
   const isIrrelevant = IRRELEVANT_PHRASES.some(phrase => text.includes(phrase));
@@ -61,7 +64,7 @@ function classifyArticle(title, content) {
 
   if (classification === 'announcement') {
     console.log(`*** NEW POPE ELECTED ***\n${title}\n${article.link}`);
-    // insert your notification logic here (e.g. webhook, Pushover, email, etc.)
+    // insert your notification logic here (e.g. webhook, Pushover, etc.)
   } else {
     console.log(`[${classification.toUpperCase()}] ${title}`);
   }
