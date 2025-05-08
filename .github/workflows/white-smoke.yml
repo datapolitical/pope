@@ -13,6 +13,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Download previous GUID
+        uses: actions/download-artifact@v4
+        with:
+          name: last-guid
+          path: .
+
       - name: Set up Node
         uses: actions/setup-node@v3
         with:
@@ -32,3 +38,24 @@ jobs:
         env:
           PUSHOVER_USER_KEY: ${{ secrets.PUSHOVER_USER_KEY }}
           PUSHOVER_APP_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
+
+      - name: Upload new GUID
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: last-guid
+          path: last_guid.txt
+
+      - name: Upload RSS dump on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-dump
+          path: rss_dump.xml
+
+      - name: Upload error log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-error
+          path: rss_error.txt
